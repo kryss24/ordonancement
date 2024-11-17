@@ -17,10 +17,12 @@ public:
     int remainingTime;
     int waitingTime;
     int turnaroundTime;
+    int responseTime; // Ajout du temps de réponse
 
-    Process(int p, std::string n, int at, int bt, int pr = 0) 
-        : pid(p), name(n), arrivalTime(at), burstTime(bt), 
-          priority(pr), remainingTime(bt), waitingTime(0), turnaroundTime(0) {}
+    Process(int p, std::string n, int at, int bt, int pr = 0)
+        : pid(p), name(n), arrivalTime(at), burstTime(bt),
+          priority(pr), remainingTime(bt), waitingTime(0),
+          turnaroundTime(0), responseTime(-1) {} // Initialisation à -1 (non défini)
 };
 
 // Classe de gestion de l'ordonnancement
@@ -38,6 +40,7 @@ private:
     GtkWidget *fifoRadio;
     GtkWidget *priorityRadio;
     GtkWidget *roundRobinRadio;
+    GtkWidget *sjfRadio; // Ajout du bouton radio pour SJF
 
     // Zone de dessin pour la grille
     GtkWidget *drawingArea;
@@ -75,7 +78,7 @@ public:
 
     // Méthode FCFS (First Come First Served)
     void FCFS() {
-        std::sort(processes.begin(), processes.end(), 
+        std::sort(processes.begin(), processes.end(),
             [](const Process& a, const Process& b) {
                 return a.arrivalTime < b.arrivalTime;
             });
@@ -96,101 +99,114 @@ public:
         int currentTime = 0;
         size_t i = 0;
 
+        // Trier les processus par temps d'arrivée
+        std::sort(processes.begin(), processes.end(),
+                [](const Process& a, const Process& b) {
+                    return a.arrivalTime < b.arrivalTime;
+                });
+
+        // Initialisation du tableau pour les temps de réponse
+        std::vector<bool> firstResponse(processes.size(), true);
+
         while (i < processes.size() || !readyQueue.empty()) {
-            // Add arrived processes to the ready queue
+            // Ajouter les processus arrivés au temps actuel dans la file d'attente
             while (i < processes.size() && processes[i].arrivalTime <= currentTime) {
                 readyQueue.push(&processes[i]);
                 i++;
             }
 
             if (!readyQueue.empty()) {
+                // Obtenir le processus en tête de file
                 Process* currentProcess = readyQueue.front();
                 readyQueue.pop();
 
+                // Enregistrer le temps de réponse si c'est la première exécution
+                if (firstResponse[currentProcess->pid - 1]) {
+                    currentProcess->responseTime = currentTime - currentProcess->arrivalTime;
+                    firstResponse[currentProcess->pid - 1] = false;
+                }
+
+                // Exécuter le processus pendant un quantum ou jusqu'à sa fin
                 int executionTime = std::min(quantum, currentProcess->remainingTime);
-                int startTime = currentTime;
                 currentTime += executionTime;
                 currentProcess->remainingTime -= executionTime;
 
-                // Update waiting time for other processes in the queue
-                for (auto& process : processes) {
-                    if (process.pid != currentProcess->pid && process.arrivalTime <= currentTime) {
-                        process.waitingTime += executionTime;
-                    }
+                // Ajouter les processus nouvellement arrivés pendant cette exécution
+                while (i < processes.size() && processes[i].arrivalTime <= currentTime) {
+                    readyQueue.push(&processes[i]);
+                    i++;
                 }
 
+                // Si le processus n'est pas terminé, le remettre dans la file d'attente
                 if (currentProcess->remainingTime > 0) {
                     readyQueue.push(currentProcess);
                 } else {
-                    calculateWaitingAndTurnaround(*currentProcess, startTime, currentTime);
+                    // Si le processus est terminé, calculer les temps d'attente et de retour
+                    calculateWaitingAndTurnaround(*currentProcess,
+                                                currentTime - currentProcess->burstTime,
+                                                currentTime);
                 }
             } else {
+                // Si la file d'attente est vide, avancer le temps
                 currentTime++;
             }
         }
     }
 
-    // M�thode Priorit� (avec pr�emption)
     void PriorityScheduling() {
-        // Trier les processus par temps d'arriv�e
+        // Trier les processus par priorité en premier
+        // Si deux processus ont la même priorité, comparer par temps d'arrivée
         std::sort(processes.begin(), processes.end(),
-                [](const Process& a, const Process& b) {
-                    return a.arrivalTime < b.arrivalTime;
-                });
+                    [](const Process& a, const Process& b) {
+                        if (a.priority == b.priority) {
+                            return a.arrivalTime < b.arrivalTime; // Comparer par temps d'arrivée
+                        }
+                        return a.priority < b.priority; // Comparer par priorité
+                    });
 
         int currentTime = 0;
-        std::vector<Process*> readyQueue;
 
-        while (!processes.empty() || !readyQueue.empty()) {
-            // Ajouter les processus qui sont arriv�s au temps actuel dans la file d'attente
-            auto it = processes.begin();
-            while (it != processes.end()) {
-                if (it->arrivalTime <= currentTime) {
-                    readyQueue.push_back(&(*it));
-                    it = processes.erase(it);
-                } else {
-                    ++it;
-                }
-            }
+        for (auto& process : processes) {
+            if (currentTime < process.arrivalTime)
+                currentTime = process.arrivalTime;
 
-            // Si la file d'attente est vide, avancer le temps
-            if (readyQueue.empty()) {
-                currentTime++;
-                continue;
-            }
-
-            // Trouver le processus avec la plus haute priorit� dans la file d'attente
-            auto highestPriority = std::min_element(readyQueue.begin(), readyQueue.end(),
-                                                    [](const Process* a, const Process* b) {
-                                                        return a->priority < b->priority;
-                                                    });
-
-            Process* currentProcess = *highestPriority;
-            readyQueue.erase(highestPriority);
-
-            // Simuler l'ex�cution du processus (1 unit� de temps pour permettre la pr�emption)
-            currentTime++;
-            currentProcess->remainingTime--;
-
-            // Si le processus est termin�
-            if (currentProcess->remainingTime == 0) {
-                calculateWaitingAndTurnaround(*currentProcess,
-                                            currentTime - currentProcess->burstTime,
-                                            currentTime);
-            } else {
-                // R�ins�rer dans la file d'attente pour continuer plus tard
-                readyQueue.push_back(currentProcess);
-            }
+            int startTime = currentTime;
+            currentTime += process.burstTime;
+            calculateWaitingAndTurnaround(process, startTime, currentTime);
         }
     }
 
+    void SJF() {
+        // Trier les processus par temps d'exécution croissant
+        // Si deux processus ont le même temps d'exécution, trier par temps d'arrivée
+        std::sort(processes.begin(), processes.end(),
+                  [](const Process& a, const Process& b) {
+                      if (a.burstTime == b.burstTime) {
+                          return a.arrivalTime < b.arrivalTime; // Comparer par temps d'arrivée
+                      }
+                      return a.burstTime < b.burstTime; // Comparer par temps d'exécution
+                  });
+
+        int currentTime = 0;
+
+        for (auto& process : processes) {
+            if (currentTime < process.arrivalTime) {
+                currentTime = process.arrivalTime;
+            }
+
+            int startTime = currentTime;
+            currentTime += process.burstTime;
+            calculateWaitingAndTurnaround(process, startTime, currentTime);
+        }
+    }
 
     void displayResults() {
-        std::cout << "PID\tName\t\tArrival\t\tBurst\t\tPriority\t\tWaiting\t\tTurnaround\n";
+        std::cout << "PID\tName\t\tArrival\t\tBurst\t\tPriority\t\tWaiting\t\tTurnaround\tResponse\n";
         for (const auto& process : processes) {
-            std::cout << process.pid << "\t" << process.name << "\t\t" << process.arrivalTime << "\t\t" 
-                      << process.burstTime << "\t\t" << process.priority << "\t\t" 
-                      << process.waitingTime << "\t\t" << process.turnaroundTime << "\n";
+            std::cout << process.pid << "\t" << process.name << "\t\t" << process.arrivalTime << "\t\t"
+                      << process.burstTime << "\t\t" << process.priority << "\t\t"
+                      << process.waitingTime << "\t\t" << process.turnaroundTime << "\t\t"
+                      << process.responseTime << "\n";
         }
     }
 
@@ -211,6 +227,8 @@ public:
             selectedAlgorithm = "Priorité avec préemption";
         } else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(roundRobinRadio))) {
             selectedAlgorithm = "Tourniquet";
+        } else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(sjfRadio))) {
+            selectedAlgorithm = "SJF";
         }
     }
 
@@ -227,16 +245,18 @@ public:
         while (std::getline(arrivalStream, arrival, ',') &&
                std::getline(burstStream, burst, ',') &&
                std::getline(priorityStream, priority, ',')) {
-            addProcess(Process(count++, "Processus " + std::to_string(count), 
+            addProcess(Process(count++, "Processus " + std::to_string(count),
                                std::stoi(arrival), std::stoi(burst), std::stoi(priority)));
         }
         std::cout << selectedAlgorithm << "\n";
         // Process::algorithm = selectedAlgorithm;
-        
+
         if (selectedAlgorithm == "FIFO") {
             FCFS();
         } else if (selectedAlgorithm == "Tourniquet") {
             RoundRobin(4);
+        } else if (selectedAlgorithm == "SJF") {
+            SJF();
         } else {
             PriorityScheduling();
         }
@@ -244,68 +264,26 @@ public:
         displayResults();
 
         drawGrid(); // Appel pour dessiner la grille après l'ordonnancement
-
     }
 
     void drawGrid() {
         gtk_widget_queue_draw(drawingArea); // Demande de redessiner la zone de dessin
     }
 
-    // static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
-    //     Scheduler *scheduler = static_cast<Scheduler*>(data);
-
-        // // Définir les dimensions et les marges pour la barre de progression
-        // int barHeight = 20;
-        // int barSpacing = 10;
-        // int barStartX = 50; // Position de départ de la barre
-        // int textOffsetY = 15; // Décalage pour le texte
-
-        // // Trouver le temps total maximum pour ajuster les barres de progression proportionnellement
-        // int maxTime = 0;
-        // for (const auto& process : scheduler->processes) {
-        //     maxTime = std::max(maxTime, process.turnaroundTime);
-        //     std::cout << process.turnaroundTime << "\n";
-        // }
-        
-
-        // // Parcourir chaque processus pour afficher le nom et la barre de progression
-        // int yOffset = barSpacing; // Décalage vertical pour chaque barre
-        // for (const auto& process : scheduler->processes) {
-        //     // Afficher le nom du processus
-        //     cairo_move_to(cr, 10, yOffset + textOffsetY);
-        //     cairo_show_text(cr, process.name.c_str());
-
-        //     // Calculer la largeur de la barre en fonction du temps d'exécution
-        //     double barWidth = (process.turnaroundTime / (double)maxTime) * 300; // Ajuster 300 pour la longueur souhaitée
-
-        //     // Définir la couleur de la barre (ici, en bleu)
-        //     cairo_set_source_rgb(cr, 0.2, 0.6, 1.0);
-            
-        //     // Dessiner la barre de progression
-        //     cairo_rectangle(cr, barStartX, yOffset, barWidth, barHeight);
-        //     cairo_fill(cr);
-
-        //     // Afficher le temps de turnaround sur la barre
-        //     cairo_set_source_rgb(cr, 0, 0, 0); // Texte en noir
-        //     cairo_move_to(cr, barStartX + barWidth + 5, yOffset + textOffsetY);
-        //     cairo_show_text(cr, std::to_string(process.turnaroundTime).c_str());
-
-        //     // Passer à la position suivante pour le prochain processus
-        //     yOffset += barHeight + barSpacing;
-        // }
-    //     scheduler->clearProcesses();
-    //     return FALSE;
-    // }
-
     static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
         Scheduler *scheduler = static_cast<Scheduler*>(data);
 
         // Dimensions de la grille
-        int cellWidth = 30;  // Largeur de chaque cellule
-        int rowHeight = 20;  // Hauteur de chaque rangée
+        const int cellWidth = 30;  // Largeur de chaque cellule
+        const int rowHeight = 20;  // Hauteur de chaque rangée
+        const int xOffset = 70;    // Décalage horizontal (pour les temps)
+        const int yOffset = 50;    // Décalage vertical (pour commencer à dessiner)
+        const int quantum = 4;    // Quantum de 4 unités de temps
 
-        int xOffset = 100;   // Décalage horizontal (pour les temps)
-        int yOffset = 50;    // Décalage vertical (pour commencer à dessiner)
+        // Tableau de couleurs pour chaque processus
+        std::vector<std::tuple<double, double, double>> colors = {
+            {0.0, 0.0, 1.0}, // Bleu
+        };
 
         // Dessiner les en-têtes des temps
         cairo_set_source_rgb(cr, 0, 0, 0); // Texte en noir
@@ -317,20 +295,23 @@ public:
 
         // Dessiner les grilles et les processus
         int row = 0; // Rangée initiale
+        int endPreProc = 0;
         for (const auto& process : scheduler->processes) {
-            int startTime = process.arrivalTime + process.waitingTime - 1;
+            int startTime = endPreProc; // Correction ici
             int endTime = startTime + process.burstTime;
 
             // Couleur de la barre de progression
-            double red = 0.2 + 0.1 * row;
-            double green = 0.5;
-            double blue = 1.0 - 0.1 * row;
-            cairo_set_source_rgb(cr, red, green, blue);
+            double r, g, b;
+            // std::tie(r, g, b) = colors[process.pid % colors.size()];
+            cairo_set_source_rgb(cr, 0.0, 0.0, 1.0);
 
-            // Dessiner la barre de progression
-            for (int t = startTime; t < endTime; ++t) {
-                cairo_rectangle(cr, xOffset + t * cellWidth, yOffset + row * rowHeight, cellWidth, rowHeight);
-                cairo_fill(cr);
+            // Dessiner la barre de progression en segments de 4 cases
+            for (int t = startTime; t < endTime; t += quantum) {
+                int segmentEnd = std::min(t + quantum, endTime);
+                for (int i = t; i < segmentEnd; ++i) {
+                    cairo_rectangle(cr, xOffset + i * cellWidth, yOffset + row * rowHeight, cellWidth, rowHeight);
+                    cairo_fill(cr);
+                }
             }
 
             // Dessiner les lignes de la grille
@@ -338,10 +319,10 @@ public:
             cairo_set_line_width(cr, 1);
             for (int t = 0; t <= 50; ++t) { // Ajustez 50 pour le temps maximal
                 cairo_move_to(cr, xOffset + t * cellWidth, yOffset);
-                cairo_line_to(cr, xOffset + t * cellWidth, yOffset + row * rowHeight);
+                cairo_line_to(cr, xOffset + t * cellWidth, yOffset + (row + 1) * rowHeight);
             }
-            cairo_move_to(cr, xOffset, yOffset + row * rowHeight);
-            cairo_line_to(cr, xOffset + 50 * cellWidth, yOffset + row * rowHeight); // Ligne horizontale
+            cairo_move_to(cr, xOffset, yOffset + (row + 1) * rowHeight);
+            cairo_line_to(cr, xOffset + 50 * cellWidth, yOffset + (row + 1) * rowHeight); // Ligne horizontale
             cairo_stroke(cr);
 
             // Ajouter le texte du nom du processus
@@ -350,6 +331,7 @@ public:
             cairo_show_text(cr, process.name.c_str());
 
             row++; // Passer à la rangée suivante
+            endPreProc = endTime;
         }
 
         // Dernière ligne horizontale pour fermer la grille
@@ -358,11 +340,9 @@ public:
         cairo_line_to(cr, xOffset + 50 * cellWidth, yOffset + row * rowHeight);
         cairo_stroke(cr);
 
-        scheduler->clearProcesses();
-        return FALSE;
+        scheduler->clearProcesses(); // Assurez-vous que cela est nécessaire
+        return FALSE; // Indiquer que le dessin est terminé
     }
-
-
 
     void createGUI() {
         GtkWidget *window;
@@ -394,6 +374,9 @@ public:
         roundRobinRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "Tourniquet");
         gtk_box_pack_start(GTK_BOX(typeBox), roundRobinRadio, FALSE, FALSE, 0);
 
+        sjfRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "SJF");
+        gtk_box_pack_start(GTK_BOX(typeBox), sjfRadio, FALSE, FALSE, 0);
+
         gtk_grid_attach(GTK_GRID(grid), typeFrame, 0, 0, 1, 1);
 
         paramsFrame = gtk_frame_new("Paramètres");
@@ -424,7 +407,7 @@ public:
 
         btnSchedule = gtk_button_new_with_label("Ordonner");
         g_signal_connect(btnSchedule, "clicked", G_CALLBACK(onScheduleClicked), this);
-        
+
         btnReset = gtk_button_new_with_label("Réinitialiser");
         gtk_box_pack_start(GTK_BOX(buttonsBox), btnSchedule, TRUE, TRUE, 0);
         gtk_box_pack_start(GTK_BOX(buttonsBox), btnReset, TRUE, TRUE, 0);
@@ -433,7 +416,8 @@ public:
 
         // Ajout de la zone de dessin
         drawingArea = gtk_drawing_area_new();
-        gtk_widget_set_size_request(drawingArea, 800, 500);
+        gtk_widget_set_hexpand(drawingArea, TRUE);  // Permet l'expansion horizontale
+        gtk_widget_set_vexpand(drawingArea, TRUE);  // Permet l'expansion verticale
         gtk_grid_attach(GTK_GRID(grid), drawingArea, 0, 2, 2, 1);
         g_signal_connect(drawingArea, "draw", G_CALLBACK(on_draw), this);
 
