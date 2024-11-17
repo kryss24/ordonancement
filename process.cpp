@@ -40,7 +40,7 @@ private:
     GtkWidget *fifoRadio;
     GtkWidget *priorityRadio;
     GtkWidget *roundRobinRadio;
-    GtkWidget *sjfRadio; // Ajout du bouton radio pour SJF
+    GtkWidget *sjfRadio, *sjfpreemptiveRadio; // Ajout du bouton radio pour SJF
 
     // Zone de dessin pour la grille
     GtkWidget *drawingArea;
@@ -52,6 +52,10 @@ private:
     std::string priorities;
     std::string selectedAlgorithm;
     std::string algorithm;
+
+    // Widgets pour le tableau des résultats
+    GtkWidget *treeView;
+    GtkListStore *listStore;
 
 public:
     void addProcess(Process p) {
@@ -200,6 +204,69 @@ public:
         }
     }
 
+    void SJFPreemptive() {
+        std::queue<Process*> readyQueue;
+        int currentTime = 0;
+        size_t i = 0;
+
+        // Trier les processus par temps d'arrivée
+        std::sort(processes.begin(), processes.end(),
+                [](const Process& a, const Process& b) {
+                    return a.arrivalTime < b.arrivalTime;
+                });
+
+        // Initialisation du tableau pour les temps de réponse
+        std::vector<bool> firstResponse(processes.size(), true);
+
+        while (i < processes.size() || !readyQueue.empty()) {
+            // Ajouter les processus arrivés au temps actuel dans la file d'attente
+            while (i < processes.size() && processes[i].arrivalTime <= currentTime) {
+                readyQueue.push(&processes[i]);
+                i++;
+            }
+
+            if (!readyQueue.empty()) {
+                // Trouver le processus avec le temps d'exécution restant le plus court
+                auto shortestJobIt = std::min_element(readyQueue.front(), readyQueue.back(),
+                    [](const Process& a, const Process& b) {
+                        return a.remainingTime < b.remainingTime;
+                    });
+
+                Process* currentProcess = shortestJobIt;
+
+                // Enregistrer le temps de réponse si c'est la première exécution
+                if (firstResponse[currentProcess->pid - 1]) {
+                    currentProcess->responseTime = currentTime - currentProcess->arrivalTime;
+                    firstResponse[currentProcess->pid - 1] = false;
+                }
+
+                // Exécuter le processus pendant un quantum ou jusqu'à sa fin
+                int executionTime = 1; // Exécuter une unité de temps
+                currentTime += executionTime;
+                currentProcess->remainingTime -= executionTime;
+
+                // Ajouter les processus nouvellement arrivés pendant cette exécution
+                while (i < processes.size() && processes[i].arrivalTime <= currentTime) {
+                    readyQueue.push(&processes[i]);
+                    i++;
+                }
+
+                // Si le processus n'est pas terminé, le remettre dans la file d'attente
+                if (currentProcess->remainingTime > 0) {
+                    readyQueue.push(currentProcess);
+                } else {
+                    // Si le processus est terminé, calculer les temps d'attente et de retour
+                    calculateWaitingAndTurnaround(*currentProcess,
+                                                currentTime - currentProcess->burstTime,
+                                                currentTime);
+                }
+            } else {
+                // Si la file d'attente est vide, avancer le temps
+                currentTime++;
+            }
+        }
+    }
+
     void displayResults() {
         std::cout << "PID\tName\t\tArrival\t\tBurst\t\tPriority\t\tWaiting\t\tTurnaround\tResponse\n";
         for (const auto& process : processes) {
@@ -229,6 +296,8 @@ public:
             selectedAlgorithm = "Tourniquet";
         } else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(sjfRadio))) {
             selectedAlgorithm = "SJF";
+        } else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(sjfpreemptiveRadio))) {
+            selectedAlgorithm = "SJFPreemptive";
         }
     }
 
@@ -257,12 +326,14 @@ public:
             RoundRobin(4);
         } else if (selectedAlgorithm == "SJF") {
             SJF();
+        } else if (selectedAlgorithm == "SJFPreemptive") {
+            SJFPreemptive();
         } else {
             PriorityScheduling();
         }
 
         displayResults();
-
+        updateTreeView();
         drawGrid(); // Appel pour dessiner la grille après l'ordonnancement
     }
 
@@ -280,11 +351,6 @@ public:
         const int yOffset = 50;    // Décalage vertical (pour commencer à dessiner)
         const int quantum = 4;    // Quantum de 4 unités de temps
 
-        // Tableau de couleurs pour chaque processus
-        std::vector<std::tuple<double, double, double>> colors = {
-            {0.0, 0.0, 1.0}, // Bleu
-        };
-
         // Dessiner les en-têtes des temps
         cairo_set_source_rgb(cr, 0, 0, 0); // Texte en noir
         for (int t = 0; t <= 50; ++t) {  // Ajustez 50 en fonction de la durée maximale
@@ -301,9 +367,7 @@ public:
             int endTime = startTime + process.burstTime;
 
             // Couleur de la barre de progression
-            double r, g, b;
-            // std::tie(r, g, b) = colors[process.pid % colors.size()];
-            cairo_set_source_rgb(cr, 0.0, 0.0, 1.0);
+            cairo_set_source_rgb(cr, 0.0, 0.0, 1.0); // Bleu
 
             // Dessiner la barre de progression en segments de 4 cases
             for (int t = startTime; t < endTime; t += quantum) {
@@ -347,8 +411,8 @@ public:
     void createGUI() {
         GtkWidget *window;
         GtkWidget *grid;
-        GtkWidget *typeFrame, *paramsFrame, *buttonsFrame;
-        GtkWidget *typeBox, *paramsBox, *buttonsBox;
+        GtkWidget *typeFrame, *paramsFrame, *buttonsFrame, *resultsFrame;
+        GtkWidget *typeBox, *paramsBox, *buttonsBox, *resultsBox;
         GtkWidget *btnSchedule, *btnReset;
 
         gtk_init(NULL, NULL);
@@ -376,6 +440,9 @@ public:
 
         sjfRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "SJF");
         gtk_box_pack_start(GTK_BOX(typeBox), sjfRadio, FALSE, FALSE, 0);
+
+        sjfpreemptiveRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "SJFPreemptive");
+        gtk_box_pack_start(GTK_BOX(typeBox), sjfpreemptiveRadio, FALSE, FALSE, 0);
 
         gtk_grid_attach(GTK_GRID(grid), typeFrame, 0, 0, 1, 1);
 
@@ -421,8 +488,73 @@ public:
         gtk_grid_attach(GTK_GRID(grid), drawingArea, 0, 2, 2, 1);
         g_signal_connect(drawingArea, "draw", G_CALLBACK(on_draw), this);
 
+        // Ajout du tableau des résultats
+        resultsFrame = gtk_frame_new("Résultats");
+        resultsBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+        gtk_container_add(GTK_CONTAINER(resultsFrame), resultsBox);
+
+        // Créer le modèle de liste pour le tableau
+        listStore = gtk_list_store_new(9, G_TYPE_INT, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT);
+
+        // Créer le GtkTreeView
+        treeView = gtk_tree_view_new_with_model(GTK_TREE_MODEL(listStore));
+        g_object_unref(listStore); // Le modèle est maintenant détenu par le treeView
+
+        // Créer les colonnes
+        GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+        GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("PID", renderer, "text", 0, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Name", renderer, "text", 1, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Arrival", renderer, "text", 2, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Burst", renderer, "text", 3, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Priority", renderer, "text", 4, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Waiting", renderer, "text", 5, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Turnaround", renderer, "text", 6, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        column = gtk_tree_view_column_new_with_attributes("Response", renderer, "text", 7, NULL);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+
+        // Ajouter le GtkTreeView au conteneur
+        gtk_box_pack_start(GTK_BOX(resultsBox), treeView, TRUE, TRUE, 0);
+
+        // Ajouter le cadre des résultats à la grille
+        gtk_grid_attach(GTK_GRID(grid), resultsFrame, 0, 3, 2, 1);
+
         gtk_widget_show_all(window);
         gtk_main();
+    }
+
+    void updateTreeView() {
+        // Effacer les anciennes données
+        gtk_list_store_clear(listStore);
+
+        // Ajouter les nouvelles données
+        for (const auto& process : processes) {
+            GtkTreeIter iter;
+            gtk_list_store_append(listStore, &iter);
+            gtk_list_store_set(listStore, &iter,
+                               0, process.pid,
+                               1, process.name.c_str(),
+                               2, process.arrivalTime,
+                               3, process.burstTime,
+                               4, process.priority,
+                               5, process.waitingTime,
+                               6, process.turnaroundTime,
+                               7, process.responseTime,
+                               -1);
+        }
     }
 
     static void onScheduleClicked(GtkWidget *widget, gpointer data) {
