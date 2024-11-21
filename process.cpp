@@ -4,21 +4,22 @@
 #include <algorithm>
 #include <string>
 #include <sstream> // Pour std::stringstream
-#include <gtk/gtk.h> //
+#include <gtk/gtk.h> // Bibliothèque GTK pour l'interface graphique
 
 // Classe représentant un processus
 class Process {
 public:
-    int pid;
-    std::string name;
-    int arrivalTime;
-    int burstTime;
-    int priority;
-    int remainingTime;
-    int waitingTime;
-    int turnaroundTime;
-    int responseTime; // Ajout du temps de réponse
+    int pid; // Identifiant du processus
+    std::string name; // Nom du processus
+    int arrivalTime; // Temps d'arrivée du processus
+    int burstTime; // Temps d'exécution du processus
+    int priority; // Priorité du processus
+    int remainingTime; // Temps restant pour l'exécution du processus
+    int waitingTime; // Temps d'attente du processus
+    int turnaroundTime; // Temps de retour du processus
+    int responseTime; // Temps de réponse du processus
 
+    // Constructeur de la classe Process
     Process(int p, std::string n, int at, int bt, int pr = 0)
         : pid(p), name(n), arrivalTime(at), burstTime(bt),
           priority(pr), remainingTime(bt), waitingTime(0),
@@ -28,45 +29,48 @@ public:
 // Classe de gestion de l'ordonnancement
 class Scheduler {
 private:
-    std::vector<Process> processes;
+    std::vector<Process> processes; // Vecteur pour stocker les processus
 
     // Widgets GTK pour les champs d'entrée
-    GtkWidget *entryProcesses;
-    GtkWidget *entryArrivals;
-    GtkWidget *entryDurations;
-    GtkWidget *entryPriorities;
+    GtkWidget *entryProcesses; // Champ pour le nombre de processus
+    GtkWidget *entryArrivals; // Champ pour les temps d'arrivée
+    GtkWidget *entryDurations; // Champ pour les durées des processus
+    GtkWidget *entryPriorities; // Champ pour les priorités des processus
 
     // Boutons radio pour sélectionner le type d'algorithme
-    GtkWidget *fifoRadio;
-    GtkWidget *priorityRadio;
-    GtkWidget *roundRobinRadio;
-    GtkWidget *sjfRadio, *sjfpreemptiveRadio; // Ajout du bouton radio pour SJF
+    GtkWidget *fifoRadio; // Radio pour FIFO
+    GtkWidget *priorityRadio; // Radio pour Priorité
+    GtkWidget *roundRobinRadio; // Radio pour Round Robin
+    GtkWidget *sjfRadio, *sjfpreemptiveRadio; // Radios pour SJF
 
     // Zone de dessin pour la grille
-    GtkWidget *drawingArea;
+    GtkWidget *drawingArea; // Zone de dessin pour visualiser l'ordonnancement
 
     // Variables pour stocker les valeurs récupérées
-    int numProcesses;
-    std::string arrivalTimes;
-    std::string burstTimes;
-    std::string priorities;
-    std::string selectedAlgorithm;
-    std::string algorithm;
+    int numProcesses; // Nombre de processus
+    std::string arrivalTimes; // Chaîne pour les temps d'arrivée
+    std::string burstTimes; // Chaîne pour les durées
+    std::string priorities; // Chaîne pour les priorités
+    std::string selectedAlgorithm; // Algorithme sélectionné
+    std::string algorithm; // Algorithme
 
     // Widgets pour le tableau des résultats
-    GtkWidget *treeView;
-    GtkListStore *listStore;
+    GtkWidget *treeView; // Vue d'arbre pour afficher les résultats
+    GtkListStore *listStore; // Modèle de liste pour le tableau
 
 public:
+    // Méthode pour ajouter un processus au vecteur
     void addProcess(Process p) {
         processes.push_back(p);
     }
 
+    // Méthode pour calculer le temps d'attente et le temps de retour d'un processus
     void calculateWaitingAndTurnaround(Process& process, int startTime, int endTime) {
         process.waitingTime = startTime - process.arrivalTime;
         process.turnaroundTime = endTime - process.arrivalTime;
     }
 
+    // Méthode pour obtenir l'ID du dernier processus
     int getLastProcessId() const {
         if (processes.empty()) {
             return 0; // Retourne 0 si la liste est vide
@@ -82,26 +86,29 @@ public:
 
     // Méthode FCFS (First Come First Served)
     void FCFS() {
+        // Trier les processus par temps d'arrivée
         std::sort(processes.begin(), processes.end(),
             [](const Process& a, const Process& b) {
                 return a.arrivalTime < b.arrivalTime;
             });
 
-        int currentTime = 0;
+        int currentTime = 0; // Temps actuel
         for (auto& process : processes) {
+            // Avancer le temps si nécessaire
             if (currentTime < process.arrivalTime)
                 currentTime = process.arrivalTime;
 
-            int startTime = currentTime;
-            currentTime += process.burstTime;
-            calculateWaitingAndTurnaround(process, startTime, currentTime);
+            int startTime = currentTime; // Temps de début d'exécution
+            currentTime += process.burstTime; // Avancer le temps actuel
+            calculateWaitingAndTurnaround(process, startTime, currentTime); // Calculer les temps
         }
     }
 
+    // Méthode Round Robin
     void RoundRobin(int quantum) {
-        std::queue<Process*> readyQueue;
-        int currentTime = 0;
-        size_t i = 0;
+        std::queue<Process*> readyQueue; // File d'attente pour les processus prêts
+        int currentTime = 0; // Temps actuel
+        size_t i = 0; // Index pour parcourir les processus
 
         // Trier les processus par temps d'arrivée
         std::sort(processes.begin(), processes.end(),
@@ -132,8 +139,8 @@ public:
 
                 // Exécuter le processus pendant un quantum ou jusqu'à sa fin
                 int executionTime = std::min(quantum, currentProcess->remainingTime);
-                currentTime += executionTime;
-                currentProcess->remainingTime -= executionTime;
+                currentTime += executionTime; // Avancer le temps actuel
+                currentProcess->remainingTime -= executionTime; // Réduire le temps restant
 
                 // Ajouter les processus nouvellement arrivés pendant cette exécution
                 while (i < processes.size() && processes[i].arrivalTime <= currentTime) {
@@ -157,6 +164,7 @@ public:
         }
     }
 
+    // Méthode pour l'ordonnancement par priorité
     void PriorityScheduling() {
         // Trier les processus par priorité en premier
         // Si deux processus ont la même priorité, comparer par temps d'arrivée
@@ -168,18 +176,20 @@ public:
                         return a.priority < b.priority; // Comparer par priorité
                     });
 
-        int currentTime = 0;
+        int currentTime = 0; // Temps actuel
 
         for (auto& process : processes) {
+            // Avancer le temps si nécessaire
             if (currentTime < process.arrivalTime)
                 currentTime = process.arrivalTime;
 
-            int startTime = currentTime;
-            currentTime += process.burstTime;
-            calculateWaitingAndTurnaround(process, startTime, currentTime);
+            int startTime = currentTime; // Temps de début d'exécution
+            currentTime += process.burstTime; // Avancer le temps actuel
+            calculateWaitingAndTurnaround(process, startTime, currentTime); // Calculer les temps
         }
     }
 
+    // Méthode SJF (Shortest Job First)
     void SJF() {
         // Trier les processus par temps d'exécution croissant
         // Si deux processus ont le même temps d'exécution, trier par temps d'arrivée
@@ -191,23 +201,25 @@ public:
                       return a.burstTime < b.burstTime; // Comparer par temps d'exécution
                   });
 
-        int currentTime = 0;
+        int currentTime = 0; // Temps actuel
 
         for (auto& process : processes) {
+            // Avancer le temps si nécessaire
             if (currentTime < process.arrivalTime) {
                 currentTime = process.arrivalTime;
             }
 
-            int startTime = currentTime;
-            currentTime += process.burstTime;
-            calculateWaitingAndTurnaround(process, startTime, currentTime);
+            int startTime = currentTime; // Temps de début d'exécution
+            currentTime += process.burstTime; // Avancer le temps actuel
+            calculateWaitingAndTurnaround(process, startTime, currentTime); // Calculer les temps
         }
     }
 
+    // Méthode SJF Preemptive
     void SJFPreemptive() {
-        std::queue<Process*> readyQueue;
-        int currentTime = 0;
-        size_t i = 0;
+        std::queue<Process*> readyQueue; // File d'attente pour les processus prêts
+        int currentTime = 0; // Temps actuel
+        size_t i = 0; // Index pour parcourir les processus
 
         // Trier les processus par temps d'arrivée
         std::sort(processes.begin(), processes.end(),
@@ -232,7 +244,7 @@ public:
                         return a.remainingTime < b.remainingTime;
                     });
 
-                Process* currentProcess = shortestJobIt;
+                Process* currentProcess = shortestJobIt; // Processus courant
 
                 // Enregistrer le temps de réponse si c'est la première exécution
                 if (firstResponse[currentProcess->pid - 1]) {
@@ -242,8 +254,8 @@ public:
 
                 // Exécuter le processus pendant un quantum ou jusqu'à sa fin
                 int executionTime = 1; // Exécuter une unité de temps
-                currentTime += executionTime;
-                currentProcess->remainingTime -= executionTime;
+                currentTime += executionTime; // Avancer le temps actuel
+                currentProcess->remainingTime -= executionTime; // Réduire le temps restant
 
                 // Ajouter les processus nouvellement arrivés pendant cette exécution
                 while (i < processes.size() && processes[i].arrivalTime <= currentTime) {
@@ -267,27 +279,30 @@ public:
         }
     }
 
+    // Méthode pour afficher les résultats
     void displayResults() {
         std::cout << "PID\tName\t\tArrival\t\tBurst\t\tPriority\t\tWaiting\t\tTurnaround\tResponse\n";
         for (const auto& process : processes) {
             std::cout << process.pid << "\t" << process.name << "\t\t" << process.arrivalTime << "\t\t"
                       << process.burstTime << "\t\t" << process.priority << "\t\t"
                       << process.waitingTime << "\t\t" << process.turnaroundTime << "\t\t"
-                      << process.responseTime << "\n";
+                      << process.responseTime << "\n"; // Afficher les informations du processus
         }
     }
 
+    // Méthode pour récupérer les valeurs d'entrée
     void getInputValues() {
         const char *processesText = gtk_entry_get_text(GTK_ENTRY(entryProcesses));
         const char *arrivalsText = gtk_entry_get_text(GTK_ENTRY(entryArrivals));
         const char *durationsText = gtk_entry_get_text(GTK_ENTRY(entryDurations));
         const char *prioritiesText = gtk_entry_get_text(GTK_ENTRY(entryPriorities));
 
-        numProcesses = atoi(processesText);
-        arrivalTimes = arrivalsText;
-        burstTimes = durationsText;
-        priorities = prioritiesText;
+        numProcesses = atoi(processesText); // Convertir le texte en entier
+        arrivalTimes = arrivalsText; // Récupérer les temps d'arrivée
+        burstTimes = durationsText; // Récupérer les durées
+        priorities = prioritiesText; // Récupérer les priorités
 
+        // Déterminer l'algorithme sélectionné
         if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(fifoRadio))) {
             selectedAlgorithm = "FIFO";
         } else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(priorityRadio))) {
@@ -301,29 +316,31 @@ public:
         }
     }
 
+    // Méthode pour afficher une alerte avec les valeurs récupérées
     void showAlertWithValues() {
         getInputValues();  // Récupérer les valeurs des champs d'entrée
 
-        std::stringstream arrivalStream(arrivalTimes);
-        std::stringstream burstStream(burstTimes);
-        std::stringstream priorityStream(priorities);
+        std::stringstream arrivalStream(arrivalTimes); // Flux pour les temps d'arrivée
+        std::stringstream burstStream(burstTimes); // Flux pour les durées
+        std::stringstream priorityStream(priorities); // Flux pour les priorités
         std::string arrival, burst, priority;
 
-        int count = getLastProcessId() + 1;
+        int count = getLastProcessId() + 1; // Obtenir l'ID du prochain processus
 
+        // Lire les valeurs des flux et ajouter les processus
         while (std::getline(arrivalStream, arrival, ',') &&
                std::getline(burstStream, burst, ',') &&
                std::getline(priorityStream, priority, ',')) {
             addProcess(Process(count++, "Processus " + std::to_string(count),
                                std::stoi(arrival), std::stoi(burst), std::stoi(priority)));
         }
-        std::cout << selectedAlgorithm << "\n";
-        // Process::algorithm = selectedAlgorithm;
+        std::cout << selectedAlgorithm << "\n"; // Afficher l'algorithme sélectionné
 
+        // Exécuter l'algorithme sélectionné
         if (selectedAlgorithm == "FIFO") {
             FCFS();
         } else if (selectedAlgorithm == "Tourniquet") {
-            RoundRobin(4);
+            RoundRobin(4); // Quantum de 4 pour Round Robin
         } else if (selectedAlgorithm == "SJF") {
             SJF();
         } else if (selectedAlgorithm == "SJFPreemptive") {
@@ -332,24 +349,26 @@ public:
             PriorityScheduling();
         }
 
-        displayResults();
-        updateTreeView();
+        displayResults(); // Afficher les résultats
+        updateTreeView(); // Mettre à jour la vue des résultats
         drawGrid(); // Appel pour dessiner la grille après l'ordonnancement
     }
 
+    // Méthode pour dessiner la grille
     void drawGrid() {
         gtk_widget_queue_draw(drawingArea); // Demande de redessiner la zone de dessin
     }
 
+    // Fonction de rappel pour dessiner dans la zone de dessin
     static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
-        Scheduler *scheduler = static_cast<Scheduler*>(data);
+        Scheduler *scheduler = static_cast<Scheduler*>(data); // Convertir les données
 
         // Dimensions de la grille
         const int cellWidth = 30;  // Largeur de chaque cellule
         const int rowHeight = 20;  // Hauteur de chaque rangée
         const int xOffset = 70;    // Décalage horizontal (pour les temps)
         const int yOffset = 50;    // Décalage vertical (pour commencer à dessiner)
-        const int quantum = 4;    // Quantum de 4 unités de temps
+        const int quantum = 4;      // Quantum de 4 unités de temps
 
         // Dessiner les en-têtes des temps
         cairo_set_source_rgb(cr, 0, 0, 0); // Texte en noir
@@ -389,12 +408,12 @@ public:
             }
             cairo_move_to(cr, xOffset, yOffset + (row + 1) * rowHeight);
             cairo_line_to(cr, xOffset + 50 * cellWidth, yOffset + (row + 1) * rowHeight); // Ligne horizontale
-            cairo_stroke(cr);
+            cairo_stroke(cr); // Dessiner les lignes
 
             // Ajouter le texte du nom du processus
             cairo_set_source_rgb(cr, 0, 0, 0); // Noir
             cairo_move_to(cr, 10, yOffset + row * rowHeight + rowHeight / 2);
-            cairo_show_text(cr, process.name.c_str());
+            cairo_show_text(cr, process.name.c_str()); // Afficher le nom du processus
 
             row++; // Passer à la rangée suivante
         }
@@ -403,33 +422,36 @@ public:
         cairo_set_source_rgb(cr, 0, 0, 0);
         cairo_move_to(cr, xOffset, yOffset + row * rowHeight);
         cairo_line_to(cr, xOffset + 50 * cellWidth, yOffset + row * rowHeight);
-        cairo_stroke(cr);
+        cairo_stroke(cr); // Dessiner la dernière ligne
 
         scheduler->clearProcesses(); // Assurez-vous que cela est nécessaire
         return FALSE; // Indiquer que le dessin est terminé
     }
 
+    // Méthode pour créer l'interface graphique
     void createGUI() {
-        GtkWidget *window;
-        GtkWidget *grid;
-        GtkWidget *typeFrame, *paramsFrame, *buttonsFrame, *resultsFrame;
-        GtkWidget *typeBox, *paramsBox, *buttonsBox, *resultsBox;
-        GtkWidget *btnSchedule, *btnReset;
+        GtkWidget *window; // Fenêtre principale
+        GtkWidget *grid; // Grille pour organiser les widgets
+        GtkWidget *typeFrame, *paramsFrame, *buttonsFrame, *resultsFrame; // Cadres pour les sections
+        GtkWidget *typeBox, *paramsBox, *buttonsBox, *resultsBox; // Boîtes pour les sections
+        GtkWidget *btnSchedule, *btnReset; // Boutons pour ordonner et réinitialiser
 
-        gtk_init(NULL, NULL);
+        gtk_init(NULL, NULL); // Initialiser GTK
 
-        window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-        gtk_window_set_title(GTK_WINDOW(window), "Ordonnanceur de Processus");
-        gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
-        g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+        window = gtk_window_new(GTK_WINDOW_TOPLEVEL); // Créer la fenêtre
+        gtk_window_set_title(GTK_WINDOW(window), "Ordonnanceur de Processus"); // Titre de la fenêtre
+        gtk_window_set_default_size(GTK_WINDOW(window), 800, 600); // Taille par défaut
+        g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL); // Fermer l'application
 
-        grid = gtk_grid_new();
-        gtk_container_add(GTK_CONTAINER(window), grid);
+        grid = gtk_grid_new(); // Créer une nouvelle grille
+        gtk_container_add(GTK_CONTAINER(window), grid); // Ajouter la grille à la fenêtre
 
+        // Cadre pour sélectionner le type d'ordonnancement
         typeFrame = gtk_frame_new("Veuillez sélectionner votre type d'ordonnancement");
         typeBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         gtk_container_add(GTK_CONTAINER(typeFrame), typeBox);
 
+        // Boutons radio pour les algorithmes
         fifoRadio = gtk_radio_button_new_with_label(NULL, "FIFO");
         gtk_box_pack_start(GTK_BOX(typeBox), fifoRadio, FALSE, FALSE, 0);
 
@@ -445,129 +467,134 @@ public:
         sjfpreemptiveRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "SJFPreemptive");
         gtk_box_pack_start(GTK_BOX(typeBox), sjfpreemptiveRadio, FALSE, FALSE, 0);
 
-        gtk_grid_attach(GTK_GRID(grid), typeFrame, 0, 0, 1, 1);
+        gtk_grid_attach(GTK_GRID(grid), typeFrame, 0, 0, 1, 1); // Ajouter le cadre à la grille
 
+        // Cadre pour les paramètres
         paramsFrame = gtk_frame_new("Paramètres");
         paramsBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         gtk_container_add(GTK_CONTAINER(paramsFrame), paramsBox);
 
-        entryProcesses = gtk_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(entryProcesses), "Nombre de processus (ex: 4)");
-        gtk_box_pack_start(GTK_BOX(paramsBox), entryProcesses, FALSE, FALSE, 0);
+        // Champs d'entrée pour les processus
+        entryProcesses = gtk_entry_new(); // Champ pour le nombre de processus
+        gtk_entry_set_placeholder_text(GTK_ENTRY(entryProcesses), "Nombre de processus (ex: 4)"); // Texte d'indication
+        gtk_box_pack_start(GTK_BOX(paramsBox), entryProcesses, FALSE, FALSE, 0); // Ajouter à la boîte
 
-        entryArrivals = gtk_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(entryArrivals), "Dates de création (ex: 0,1,3,5)");
-        gtk_box_pack_start(GTK_BOX(paramsBox), entryArrivals, FALSE, FALSE, 0);
+        entryArrivals = gtk_entry_new(); // Champ pour les temps d'arrivée
+        gtk_entry_set_placeholder_text(GTK_ENTRY(entryArrivals), "Dates de création (ex: 0,1,3,5)"); // Texte d'indication
+        gtk_box_pack_start(GTK_BOX(paramsBox), entryArrivals, FALSE, FALSE, 0); // Ajouter à la boîte
 
-        entryDurations = gtk_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(entryDurations), "Durée des processus (ex: 9,2,5,6)");
-        gtk_box_pack_start(GTK_BOX(paramsBox), entryDurations, FALSE, FALSE, 0);
+        entryDurations = gtk_entry_new(); // Champ pour les durées des processus
+        gtk_entry_set_placeholder_text(GTK_ENTRY(entryDurations), "Durée des processus (ex: 9,2,5,6)"); // Texte d'indication
+        gtk_box_pack_start(GTK_BOX(paramsBox), entryDurations, FALSE, FALSE, 0); // Ajouter à la boîte
 
-        entryPriorities = gtk_entry_new();
-        gtk_entry_set_placeholder_text(GTK_ENTRY(entryPriorities), "Priorité (ex: 1,2,3,4)");
-        gtk_box_pack_start(GTK_BOX(paramsBox), entryPriorities, FALSE, FALSE, 0);
+        entryPriorities = gtk_entry_new(); // Champ pour les priorités
+        gtk_entry_set_placeholder_text(GTK_ENTRY(entryPriorities), "Priorité (ex: 1,2,3,4)"); // Texte d'indication
+        gtk_box_pack_start(GTK_BOX(paramsBox), entryPriorities, FALSE, FALSE, 0); // Ajouter à la boîte
 
-        gtk_grid_attach(GTK_GRID(grid), paramsFrame, 1, 0, 1, 1);
+        gtk_grid_attach(GTK_GRID(grid), paramsFrame, 1, 0, 1, 1); // Ajouter le cadre des paramètres à la grille
 
+        // Cadre pour les boutons
         buttonsFrame = gtk_frame_new(NULL);
         buttonsBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
         gtk_container_add(GTK_CONTAINER(buttonsFrame), buttonsBox);
 
-        btnSchedule = gtk_button_new_with_label("Ordonner");
-        g_signal_connect(btnSchedule, "clicked", G_CALLBACK(onScheduleClicked), this);
+        btnSchedule = gtk_button_new_with_label("Ordonner"); // Bouton pour ordonner
+        g_signal_connect(btnSchedule, "clicked", G_CALLBACK(onScheduleClicked), this); // Connecter le signal
 
-        btnReset = gtk_button_new_with_label("Réinitialiser");
-        gtk_box_pack_start(GTK_BOX(buttonsBox), btnSchedule, TRUE, TRUE, 0);
-        gtk_box_pack_start(GTK_BOX(buttonsBox), btnReset, TRUE, TRUE, 0);
+        btnReset = gtk_button_new_with_label("Réinitialiser"); // Bouton pour réinitialiser
+        gtk_box_pack_start(GTK_BOX(buttonsBox), btnSchedule, TRUE, TRUE, 0); // Ajouter le bouton d'ordonnancement
+        gtk_box_pack_start(GTK_BOX(buttonsBox), btnReset, TRUE, TRUE, 0); // Ajouter le bouton de réinitialisation
 
-        gtk_grid_attach(GTK_GRID(grid), buttonsFrame, 0, 1, 2, 1);
+        gtk_grid_attach(GTK_GRID(grid), buttonsFrame, 0, 1, 2, 1); // Ajouter le cadre des boutons à la grille
 
         // Ajout de la zone de dessin
-        drawingArea = gtk_drawing_area_new();
+        drawingArea = gtk_drawing_area_new(); // Créer la zone de dessin
         gtk_widget_set_hexpand(drawingArea, TRUE);  // Permet l'expansion horizontale
         gtk_widget_set_vexpand(drawingArea, TRUE);  // Permet l'expansion verticale
-        gtk_grid_attach(GTK_GRID(grid), drawingArea, 0, 2, 2, 1);
-        g_signal_connect(drawingArea, "draw", G_CALLBACK(on_draw), this);
+        gtk_grid_attach(GTK_GRID(grid), drawingArea, 0, 2, 2, 1); // Ajouter la zone de dessin à la grille
+        g_signal_connect(drawingArea, "draw", G_CALLBACK(on_draw), this); // Connecter le signal de dessin
 
         // Ajout du tableau des résultats
-        resultsFrame = gtk_frame_new("Résultats");
-        resultsBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-        gtk_container_add(GTK_CONTAINER(resultsFrame), resultsBox);
+        resultsFrame = gtk_frame_new("Résultats"); // Cadre pour les résultats
+        resultsBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5); // Boîte pour les résultats
+        gtk_container_add(GTK_CONTAINER(resultsFrame), resultsBox); // Ajouter la boîte au cadre
 
         // Créer le modèle de liste pour le tableau
-        listStore = gtk_list_store_new(9, G_TYPE_INT, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT);
+        listStore = gtk_list_store_new(9, G_TYPE_INT, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT, G_TYPE_INT); // Modèle de liste avec 9 colonnes
 
         // Créer le GtkTreeView
-        treeView = gtk_tree_view_new_with_model(GTK_TREE_MODEL(listStore));
+        treeView = gtk_tree_view_new_with_model(GTK_TREE_MODEL(listStore)); // Créer la vue d'arbre avec le modèle
         g_object_unref(listStore); // Le modèle est maintenant détenu par le treeView
 
-        // Créer les colonnes
-        GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
-        GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("PID", renderer, "text", 0, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        // Créer les colonnes pour le tableau
+        GtkCellRenderer *renderer = gtk_cell_renderer_text_new(); // Créer un renderer pour le texte
+        GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("PID", renderer, "text", 0, NULL); // Colonne pour PID
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Name", renderer, "text", 1, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Name", renderer, "text", 1, NULL); // Colonne pour le nom
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Arrival", renderer, "text", 2, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Arrival", renderer, "text", 2, NULL); // Colonne pour le temps d'arrivée
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Burst", renderer, "text", 3, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Burst", renderer, "text", 3, NULL); // Colonne pour le temps d'exécution
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Priority", renderer, "text", 4, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Priority", renderer, "text", 4, NULL); // Colonne pour la priorité
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Waiting", renderer, "text", 5, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Waiting", renderer, "text", 5, NULL); // Colonne pour le temps d'attente
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Turnaround", renderer, "text", 6, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Turnaround", renderer, "text", 6, NULL); // Colonne pour le temps de retour
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
-        column = gtk_tree_view_column_new_with_attributes("Response", renderer, "text", 7, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+        column = gtk_tree_view_column_new_with_attributes("Response", renderer, "text", 7, NULL); // Colonne pour le temps de réponse
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column); // Ajouter la colonne à la vue
 
         // Ajouter le GtkTreeView au conteneur
-        gtk_box_pack_start(GTK_BOX(resultsBox), treeView, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(resultsBox), treeView, TRUE, TRUE, 0); // Ajouter la vue d'arbre à la boîte des résultats
 
         // Ajouter le cadre des résultats à la grille
-        gtk_grid_attach(GTK_GRID(grid), resultsFrame, 0, 3, 2, 1);
+        gtk_grid_attach(GTK_GRID(grid), resultsFrame, 0, 3, 2, 1); // Ajouter le cadre des résultats à la grille
 
-        gtk_widget_show_all(window);
-        gtk_main();
+        gtk_widget_show_all(window); // Afficher tous les widgets de la fenêtre
+        gtk_main(); // Lancer la boucle principale de GTK
     }
 
+    // Méthode pour mettre à jour le GtkTreeView avec les résultats
     void updateTreeView() {
-        // Effacer les anciennes données
-        gtk_list_store_clear(listStore);
+        gtk_list_store_clear(listStore); // Effacer les anciennes données
 
         // Ajouter les nouvelles données
         for (const auto& process : processes) {
-            GtkTreeIter iter;
-            gtk_list_store_append(listStore, &iter);
+            GtkTreeIter iter; // Itérateur pour le modèle de liste
+            gtk_list_store_append(listStore, &iter); // Ajouter une nouvelle ligne
             gtk_list_store_set(listStore, &iter,
-                               0, process.pid,
-                               1, process.name.c_str(),
-                               2, process.arrivalTime,
-                               3, process.burstTime,
-                               4, process.priority,
-                               5, process.waitingTime,
-                               6, process.turnaroundTime,
-                               7, process.responseTime,
-                               -1);
+                               0, process.pid, // PID
+                               1, process.name.c_str(), // Nom
+                               2, process.arrivalTime, // Temps d'arrivée
+                               3, process.burstTime, // Temps d'exécution
+                               4, process.priority, // Priorité
+                               5, process.waitingTime, // Temps d'attente
+                               6, process.turnaroundTime, // Temps de retour
+                               7, process.responseTime, // Temps de réponse
+                               -1); // Fin des paramètres
         }
     }
 
+    // Fonction de rappel pour le clic sur le bouton d'ordonnancement
     static void onScheduleClicked(GtkWidget *widget, gpointer data) {
-        Scheduler *scheduler = static_cast<Scheduler*>(data);
-        scheduler->showAlertWithValues();
+        Scheduler *scheduler = static_cast<Scheduler*>(data); // Convertir les données
+        scheduler->showAlertWithValues(); // Appeler la méthode pour afficher les valeurs
     }
 };
 
+// Fonction principale
 int main() {
-    Scheduler scheduler;
+    Scheduler scheduler; // Créer une instance de Scheduler
 
     // Lancement de l'interface graphique
-    scheduler.createGUI();
-    return 0;
+    scheduler.createGUI(); // Appeler la méthode pour créer l'interface
+    return 0; // Fin du programme
 }
