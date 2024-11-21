@@ -361,18 +361,20 @@ public:
 
         // Dessiner les grilles et les processus
         int row = 0; // Rangée initiale
-        int endPreProc = 0;
         for (const auto& process : scheduler->processes) {
-            int startTime = endPreProc; // Correction ici
+            int startTime = process.arrivalTime + process.waitingTime; // Correction ici
             int endTime = startTime + process.burstTime;
 
-            // Couleur de la barre de progression
-            cairo_set_source_rgb(cr, 0.0, 0.0, 1.0); // Bleu
-
             // Dessiner la barre de progression en segments de 4 cases
-            for (int t = startTime; t < endTime; t += quantum) {
+            for (int t = process.arrivalTime; t < endTime; t += quantum) {
                 int segmentEnd = std::min(t + quantum, endTime);
                 for (int i = t; i < segmentEnd; ++i) {
+                    // Couleur de la barre de progression
+                    if (i < startTime) {
+                        cairo_set_source_rgb(cr, 0.0, 1.0, 1.0); // Bleu
+                    } else {
+                        cairo_set_source_rgb(cr, 0.0, 0.0, 1.0); // Bleu
+                    }
                     cairo_rectangle(cr, xOffset + i * cellWidth, yOffset + row * rowHeight, cellWidth, rowHeight);
                     cairo_fill(cr);
                 }
@@ -395,7 +397,6 @@ public:
             cairo_show_text(cr, process.name.c_str());
 
             row++; // Passer à la rangée suivante
-            endPreProc = endTime;
         }
 
         // Dernière ligne horizontale pour fermer la grille
@@ -568,6 +569,5 @@ int main() {
 
     // Lancement de l'interface graphique
     scheduler.createGUI();
-
     return 0;
 }
