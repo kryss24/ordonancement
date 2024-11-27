@@ -121,7 +121,6 @@ public:
                 Process *currentProcess = readyQueue.front();
                 readyQueue.pop();
 
-
                 if (firstResponse[currentProcess->pid - 1])
                 {
                     currentProcess->responseTime = currentTime - currentProcess->arrivalTime;
@@ -156,57 +155,96 @@ public:
         }
     }
 
-
     void PriorityScheduling()
     {
-        std::sort(processes.begin(), processes.end(),
-                  [](const Process &a, const Process &b)
-                  {
-                      if (a.priority == b.priority)
-                      {
-                          return a.arrivalTime < b.arrivalTime;
-                      }
-                      return a.priority < b.priority;
-                  });
+        std::queue<Process *> readyQueue;
 
         int currentTime = 0;
-        for (auto &process : processes)
+        size_t i = 0;
+
+        while (i < processes.size() || !readyQueue.empty())
         {
-            if (currentTime < process.arrivalTime)
+            while (i < processes.size() && processes[i].arrivalTime <= currentTime)
             {
-                currentTime = process.arrivalTime;
+                readyQueue.push(&processes[i]);
+                i++;
             }
 
-            int startTime = currentTime;
-            currentTime += process.burstTime;
-            calculateWaitingAndTurnaround(process, startTime, currentTime);
+            if (!readyQueue.empty())
+            {
+                Process *currentProcess = readyQueue.front();
+                readyQueue.pop();
+
+                if (currentProcess->responseTime == -1)
+                {
+                    currentProcess->responseTime = currentTime - currentProcess->arrivalTime;
+                }
+
+                currentProcess->remainingTime = 0;
+                currentTime += currentProcess->burstTime;
+
+                while (i < processes.size() && processes[i].arrivalTime <= currentTime)
+                {
+                    readyQueue.push(&processes[i]);
+                    i++;
+                }
+
+                trier(readyQueue, 1);
+
+                calculateWaitingAndTurnaround(*currentProcess,
+                                              currentTime - currentProcess->burstTime,
+                                              currentTime);
+            }
+            else
+            {
+                currentTime++;
+            }
         }
     }
 
-    void trier(std::queue<Process *> &q) {
+    void trier(std::queue<Process *> &q, int type)
+    {
         std::vector<Process *> processes;
 
         // Extraire les éléments de la queue dans un vecteur
-        while (!q.empty()) {
+        while (!q.empty())
+        {
             processes.push_back(q.front());
             q.pop();
         }
 
         // Trier les éléments dans le vecteur
-        std::sort(processes.begin(), processes.end(),
-                [](const Process* a, const Process* b) {
-                    if (a->burstTime == b->burstTime) {
-                        return a->arrivalTime < b->arrivalTime;
-                    }
-                    return a->burstTime < b->burstTime;
-                });
+        if (type == 0)
+        {
+            std::sort(processes.begin(), processes.end(),
+                      [](const Process *a, const Process *b)
+                      {
+                          if (a->burstTime == b->burstTime)
+                          {
+                              return a->arrivalTime < b->arrivalTime;
+                          }
+                          return a->burstTime < b->burstTime;
+                      });
+        }
+        else
+        {
+            std::sort(processes.begin(), processes.end(),
+                      [](const Process *a, const Process *b)
+                      {
+                          if (a->burstTime == b->burstTime)
+                          {
+                              return a->priority < b->priority;
+                          }
+                          return a->priority < b->priority;
+                      });
+        }
 
         // Réinsérer les éléments triés dans la queue
-        for (const auto &process : processes) {
+        for (const auto &process : processes)
+        {
             q.push(process);
         }
     }
-
 
     void SJFPreemptive()
     {
@@ -223,8 +261,6 @@ public:
                 i++;
             }
 
-            
-
             if (!readyQueue.empty())
             {
                 Process *currentProcess = readyQueue.front();
@@ -235,8 +271,8 @@ public:
                     currentProcess->responseTime = currentTime - currentProcess->arrivalTime;
                 }
 
-                currentProcess->remainingTime=0;
-                currentTime+=currentProcess->burstTime;
+                currentProcess->remainingTime = 0;
+                currentTime += currentProcess->burstTime;
 
                 while (i < processes.size() && processes[i].arrivalTime <= currentTime)
                 {
@@ -244,11 +280,11 @@ public:
                     i++;
                 }
 
-                trier(readyQueue);
+                trier(readyQueue, 0);
 
                 calculateWaitingAndTurnaround(*currentProcess,
-                                        currentTime - currentProcess->burstTime,
-                                        currentTime);
+                                              currentTime - currentProcess->burstTime,
+                                              currentTime);
             }
             else
             {
@@ -441,7 +477,6 @@ public:
         roundRobinRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "Tourniquet");
         gtk_box_pack_start(GTK_BOX(typeBox), roundRobinRadio, FALSE, FALSE, 0);
 
-
         sjfpreemptiveRadio = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(fifoRadio), "SJFPreemptive");
         gtk_box_pack_start(GTK_BOX(typeBox), sjfpreemptiveRadio, FALSE, FALSE, 0);
 
@@ -467,11 +502,11 @@ public:
 
         entryPriorities = gtk_entry_new();                                                    // Champ pour les priorités
         gtk_entry_set_placeholder_text(GTK_ENTRY(entryPriorities), "Priorité (ex: 1,2,3,4)"); // Texte d'indication
-        gtk_box_pack_start(GTK_BOX(paramsBox), entryPriorities, FALSE, FALSE, 0); // Ajouter à la boîte
+        gtk_box_pack_start(GTK_BOX(paramsBox), entryPriorities, FALSE, FALSE, 0);             // Ajouter à la boîte
 
-        entryQuantum = gtk_entry_new();                                                             // Champ pour le quantum
+        entryQuantum = gtk_entry_new();                                                    // Champ pour le quantum
         gtk_entry_set_placeholder_text(GTK_ENTRY(entryQuantum), "Entre le quantum temps"); // Texte d'indication
-        gtk_box_pack_start(GTK_BOX(paramsBox), entryQuantum, FALSE, FALSE, 0);  
+        gtk_box_pack_start(GTK_BOX(paramsBox), entryQuantum, FALSE, FALSE, 0);
 
         gtk_grid_attach(GTK_GRID(grid), paramsFrame, 1, 0, 1, 1); // Ajouter le cadre des paramètres à la grille
 
@@ -529,7 +564,7 @@ public:
         gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);                            // Ajouter la colonne à la vue
 
         column = gtk_tree_view_column_new_with_attributes("Turnaround", renderer, "text", 6, NULL); // Colonne pour le temps de retour
-        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);                           // Ajouter la colonne à la vue
+        gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);                               // Ajouter la colonne à la vue
 
         // Ajouter le GtkTreeView au conteneur
         gtk_box_pack_start(GTK_BOX(resultsBox), treeView, TRUE, TRUE, 0); // Ajouter la vue d'arbre à la boîte des résultats
